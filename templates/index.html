@@ -1,0 +1,1373 @@
+<!doctype html>
+<html lang="id" data-theme="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SKDR Web Uploader — Sistem Kewaspadaan Dini Rumah Sakit</title>
+    <meta name="description" content="Upload dan proses data SKDR, validasi otomatis minggu epidemiologi, kirim payload JSON ke webhook." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+    <style>
+      /* ========== RESET & BASE ========== */
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+      :root {
+        --radius-sm: 8px;
+        --radius-md: 12px;
+        --radius-lg: 16px;
+        --radius-xl: 20px;
+        --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        --transition: 0.25s cubic-bezier(.4,0,.2,1);
+      }
+
+      /* ========== DARK THEME (default) ========== */
+      [data-theme="dark"] {
+        color-scheme: dark;
+        --bg-primary: #0b1120;
+        --bg-secondary: #111827;
+        --bg-card: rgba(17, 24, 39, 0.65);
+        --bg-card-solid: #1a2332;
+        --border-glass: rgba(255, 255, 255, 0.06);
+        --border-accent: rgba(99, 179, 237, 0.25);
+
+        --text-primary: #f1f5f9;
+        --text-secondary: #94a3b8;
+        --text-muted: #64748b;
+
+        --accent: #38bdf8;
+        --accent-glow: rgba(56, 189, 248, 0.15);
+        --accent-hover: #7dd3fc;
+        --success: #34d399;
+        --success-bg: rgba(52, 211, 153, 0.08);
+        --success-border: rgba(52, 211, 153, 0.25);
+        --error: #fb7185;
+        --error-bg: rgba(251, 113, 133, 0.08);
+        --error-border: rgba(251, 113, 133, 0.25);
+        --warning: #fbbf24;
+
+        --shadow-sm: 0 1px 3px rgba(0,0,0,.3);
+        --shadow-md: 0 4px 16px rgba(0,0,0,.35);
+        --shadow-lg: 0 8px 32px rgba(0,0,0,.4);
+        --shadow-glow: 0 0 40px rgba(56, 189, 248, 0.08);
+
+        --loader-overlay-bg: rgba(11, 17, 32, 0.85);
+        --table-header-bg: rgba(15, 23, 42, 0.9);
+        --input-bg: rgba(255,255,255,0.04);
+        --input-bg-focus: rgba(255,255,255,0.06);
+        --row-hover: rgba(56, 189, 248, 0.04);
+        --row-even: rgba(255,255,255,0.01);
+        --stat-bg: rgba(255,255,255,0.03);
+        --btn-secondary-bg: rgba(255,255,255,0.05);
+        --file-drop-bg: rgba(255,255,255,0.02);
+        --file-drop-border: rgba(100, 116, 139, 0.2);
+        --gradient-title-from: #f1f5f9;
+        --gradient-title-to: #38bdf8;
+        --gradient-mesh-1: rgba(56, 189, 248, 0.06);
+        --gradient-mesh-2: rgba(99, 102, 241, 0.05);
+        --gradient-mesh-3: rgba(16, 185, 129, 0.04);
+      }
+
+      /* ========== LIGHT THEME ========== */
+      [data-theme="light"] {
+        color-scheme: light;
+        --bg-primary: #f0f4f8;
+        --bg-secondary: #ffffff;
+        --bg-card: rgba(255, 255, 255, 0.75);
+        --bg-card-solid: #ffffff;
+        --border-glass: rgba(0, 0, 0, 0.08);
+        --border-accent: rgba(14, 165, 233, 0.3);
+
+        --text-primary: #0f172a;
+        --text-secondary: #475569;
+        --text-muted: #94a3b8;
+
+        --accent: #0284c7;
+        --accent-glow: rgba(14, 165, 233, 0.1);
+        --accent-hover: #0369a1;
+        --success: #059669;
+        --success-bg: rgba(5, 150, 105, 0.08);
+        --success-border: rgba(5, 150, 105, 0.25);
+        --error: #e11d48;
+        --error-bg: rgba(225, 29, 72, 0.06);
+        --error-border: rgba(225, 29, 72, 0.2);
+        --warning: #d97706;
+
+        --shadow-sm: 0 1px 3px rgba(0,0,0,.06);
+        --shadow-md: 0 4px 16px rgba(0,0,0,.08);
+        --shadow-lg: 0 8px 32px rgba(0,0,0,.1);
+        --shadow-glow: 0 0 40px rgba(14, 165, 233, 0.06);
+
+        --loader-overlay-bg: rgba(240, 244, 248, 0.9);
+        --table-header-bg: rgba(241, 245, 249, 0.95);
+        --input-bg: rgba(0,0,0,0.03);
+        --input-bg-focus: rgba(0,0,0,0.05);
+        --row-hover: rgba(14, 165, 233, 0.06);
+        --row-even: rgba(0,0,0,0.015);
+        --stat-bg: rgba(0,0,0,0.02);
+        --btn-secondary-bg: rgba(0,0,0,0.04);
+        --file-drop-bg: rgba(0,0,0,0.02);
+        --file-drop-border: rgba(100, 116, 139, 0.2);
+        --gradient-title-from: #0f172a;
+        --gradient-title-to: #0284c7;
+        --gradient-mesh-1: rgba(14, 165, 233, 0.06);
+        --gradient-mesh-2: rgba(99, 102, 241, 0.04);
+        --gradient-mesh-3: rgba(16, 185, 129, 0.04);
+      }
+
+      html { scroll-behavior: smooth; }
+
+      body {
+        font-family: var(--font);
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        min-height: 100vh;
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      /* Background gradient mesh */
+      body::before {
+        content: '';
+        position: fixed;
+        inset: 0;
+        background:
+          radial-gradient(ellipse 60% 50% at 20% 10%, var(--gradient-mesh-1) 0%, transparent 60%),
+          radial-gradient(ellipse 50% 40% at 80% 80%, var(--gradient-mesh-2) 0%, transparent 60%),
+          radial-gradient(ellipse 40% 50% at 50% 50%, var(--gradient-mesh-3) 0%, transparent 60%);
+        pointer-events: none;
+        z-index: 0;
+        transition: background 0.5s ease;
+      }
+
+      /* ========== LAYOUT ========== */
+      .page-wrapper {
+        position: relative;
+        z-index: 1;
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 40px 24px 30px;
+      }
+
+      /* ========== HEADER ========== */
+      .header {
+        text-align: center;
+        margin-bottom: 40px;
+        animation: fadeInDown 0.6s ease-out;
+      }
+
+      .header__badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: var(--accent-glow);
+        border: 1px solid var(--border-accent);
+        border-radius: 999px;
+        padding: 6px 16px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--accent);
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        margin-bottom: 16px;
+      }
+
+      .header__badge svg {
+        width: 14px;
+        height: 14px;
+        fill: currentColor;
+      }
+
+      .header h1 {
+        font-size: 28px;
+        font-weight: 800;
+        background: linear-gradient(135deg, var(--gradient-title-from) 30%, var(--gradient-title-to) 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        margin-bottom: 8px;
+        line-height: 1.3;
+      }
+
+      .header p {
+        color: var(--text-secondary);
+        font-size: 15px;
+        max-width: 560px;
+        margin: 0 auto;
+      }
+
+      /* ========== CARD ========== */
+      .card {
+        background: var(--bg-card);
+        backdrop-filter: blur(20px) saturate(1.2);
+        -webkit-backdrop-filter: blur(20px) saturate(1.2);
+        border: 1px solid var(--border-glass);
+        border-radius: var(--radius-xl);
+        padding: 32px;
+        box-shadow: var(--shadow-lg), var(--shadow-glow);
+        animation: fadeInUp 0.5s ease-out;
+        margin-bottom: 24px;
+      }
+
+      .card--form {
+        animation-delay: 0.1s;
+        animation-fill-mode: backwards;
+      }
+
+      .card__title {
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--text-primary);
+        margin-bottom: 4px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .card__title-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: var(--radius-sm);
+        background: var(--accent-glow);
+        border: 1px solid var(--border-accent);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+      }
+
+      .card__title-icon svg {
+        width: 18px;
+        height: 18px;
+        color: var(--accent);
+      }
+
+      .card__subtitle {
+        font-size: 13px;
+        color: var(--text-muted);
+        margin-bottom: 24px;
+        padding-left: 46px;
+      }
+
+      /* ========== FORM ========== */
+      .form-section {
+        margin-bottom: 28px;
+      }
+
+      .form-section:last-of-type {
+        margin-bottom: 0;
+      }
+
+      .form-label {
+        display: block;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-secondary);
+        margin-bottom: 8px;
+        letter-spacing: 0.02em;
+      }
+
+      .form-label .required {
+        color: var(--error);
+        margin-left: 2px;
+      }
+
+      .text-input {
+        width: 100%;
+        padding: 12px 16px;
+        background: var(--input-bg);
+        border: 1px solid var(--border-glass);
+        border-radius: var(--radius-md);
+        color: var(--text-primary);
+        font-family: var(--font);
+        font-size: 14px;
+        transition: var(--transition);
+        outline: none;
+      }
+
+      .text-input::placeholder {
+        color: var(--text-muted);
+      }
+
+      .text-input:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px var(--accent-glow);
+        background: var(--input-bg-focus);
+      }
+
+      /* ========== FILE UPLOAD ZONES ========== */
+      .file-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+
+      @media (max-width: 640px) {
+        .file-grid { grid-template-columns: 1fr; }
+      }
+
+      .file-drop {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        padding: 20px 16px;
+        border: 2px dashed var(--file-drop-border);
+        border-radius: var(--radius-md);
+        background: var(--file-drop-bg);
+        cursor: pointer;
+        transition: var(--transition);
+        min-height: 120px;
+        overflow: hidden;
+      }
+
+      .file-drop:hover,
+      .file-drop--dragover {
+        border-color: var(--accent);
+        background: var(--accent-glow);
+      }
+
+      .file-drop--has-file {
+        border-color: var(--success);
+        border-style: solid;
+        background: var(--success-bg);
+      }
+
+      .file-drop input[type="file"] {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        cursor: pointer;
+        z-index: 2;
+      }
+
+      .file-drop__icon {
+        width: 32px;
+        height: 32px;
+        color: var(--text-muted);
+        transition: var(--transition);
+      }
+
+      .file-drop:hover .file-drop__icon,
+      .file-drop--dragover .file-drop__icon {
+        color: var(--accent);
+        transform: translateY(-2px);
+      }
+
+      .file-drop--has-file .file-drop__icon {
+        color: var(--success);
+      }
+
+      .file-drop__label {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--text-secondary);
+        text-align: center;
+        transition: var(--transition);
+      }
+
+      .file-drop--has-file .file-drop__label {
+        color: var(--success);
+      }
+
+      .file-drop__hint {
+        font-size: 11px;
+        color: var(--text-muted);
+      }
+
+      .file-drop__filename {
+        font-size: 11px;
+        color: var(--success);
+        font-weight: 500;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        display: none;
+      }
+
+      .file-drop--has-file .file-drop__filename {
+        display: block;
+      }
+
+      .file-drop--has-file .file-drop__hint {
+        display: none;
+      }
+
+      /* ========== SUBMIT BUTTON ========== */
+      .btn-submit {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        width: 100%;
+        padding: 14px 24px;
+        margin-top: 28px;
+        background: linear-gradient(135deg, #0ea5e9, #0284c7);
+        color: white;
+        border: none;
+        border-radius: var(--radius-md);
+        font-family: var(--font);
+        font-size: 15px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: var(--transition);
+        position: relative;
+        overflow: hidden;
+        letter-spacing: 0.02em;
+      }
+
+      .btn-submit::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(135deg, transparent 40%, rgba(255,255,255,0.15) 50%, transparent 60%);
+        transform: translateX(-100%);
+        transition: transform 0.6s ease;
+      }
+
+      .btn-submit:hover {
+        background: linear-gradient(135deg, #38bdf8, #0ea5e9);
+        box-shadow: 0 4px 20px rgba(14, 165, 233, 0.35);
+        transform: translateY(-1px);
+      }
+
+      .btn-submit:hover::before {
+        transform: translateX(100%);
+      }
+
+      .btn-submit:active {
+        transform: translateY(0);
+      }
+
+      .btn-submit svg {
+        width: 18px;
+        height: 18px;
+        flex-shrink: 0;
+      }
+
+      /* ========== ALERTS ========== */
+      .alert {
+        display: flex;
+        gap: 12px;
+        padding: 16px 20px;
+        border-radius: var(--radius-md);
+        margin-bottom: 24px;
+        animation: fadeInUp 0.4s ease-out;
+        border: 1px solid;
+      }
+
+      .alert--success {
+        background: var(--success-bg);
+        border-color: var(--success-border);
+      }
+
+      .alert--error {
+        background: var(--error-bg);
+        border-color: var(--error-border);
+      }
+
+      .alert__icon {
+        width: 22px;
+        height: 22px;
+        flex-shrink: 0;
+        margin-top: 1px;
+      }
+
+      .alert--success .alert__icon { color: var(--success); }
+      .alert--error .alert__icon { color: var(--error); }
+
+      .alert__content {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .alert__title {
+        font-size: 14px;
+        font-weight: 700;
+        margin-bottom: 6px;
+      }
+
+      .alert--success .alert__title { color: var(--success); }
+      .alert--error .alert__title { color: var(--error); }
+
+      .alert__body {
+        font-size: 13px;
+        color: var(--text-secondary);
+        line-height: 1.7;
+      }
+
+      /* ========== SUMMARY STATS ========== */
+      .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+        margin-bottom: 24px;
+        animation: fadeInUp 0.5s ease-out 0.15s backwards;
+      }
+
+      @media (max-width: 640px) {
+        .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      }
+
+      .stat-card {
+        background: var(--stat-bg);
+        border: 1px solid var(--border-glass);
+        border-radius: var(--radius-md);
+        padding: 16px;
+        text-align: center;
+        transition: var(--transition);
+      }
+
+      .stat-card:hover {
+        border-color: var(--border-accent);
+        background: var(--accent-glow);
+        transform: translateY(-2px);
+      }
+
+      .stat-card__value {
+        font-size: 24px;
+        font-weight: 800;
+        color: var(--accent);
+        line-height: 1.2;
+      }
+
+      .stat-card__label {
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        margin-top: 4px;
+      }
+
+      /* ========== DATA TABLE ========== */
+      .table-wrapper {
+        overflow-x: auto;
+        border-radius: var(--radius-md);
+        border: 1px solid var(--border-glass);
+        animation: fadeInUp 0.5s ease-out 0.2s backwards;
+      }
+
+      .data-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+
+      .data-table thead {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+      }
+
+      .data-table th {
+        background: var(--table-header-bg);
+        backdrop-filter: blur(8px);
+        padding: 12px 14px;
+        text-align: left;
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        border-bottom: 1px solid var(--border-glass);
+        white-space: nowrap;
+      }
+
+      .data-table td {
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--border-glass);
+        color: var(--text-secondary);
+        transition: var(--transition);
+      }
+
+      .data-table td:first-child {
+        font-weight: 600;
+        color: var(--text-primary);
+      }
+
+      .data-table tbody tr {
+        transition: var(--transition);
+      }
+
+      .data-table tbody tr:hover {
+        background: var(--row-hover);
+      }
+
+      .data-table tbody tr:hover td {
+        color: var(--text-primary);
+      }
+
+      .data-table tbody tr:nth-child(even) {
+        background: var(--row-even);
+      }
+
+      .data-table tbody tr:nth-child(even):hover {
+        background: var(--row-hover);
+      }
+
+      .data-table .num {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .data-table .cfr-cell {
+        font-weight: 600;
+      }
+
+      /* ========== FOOTER ========== */
+      .footer {
+        text-align: center;
+        padding: 12px 0 0;
+        font-size: 12px;
+        color: var(--text-muted);
+        animation: fadeInUp 0.5s ease-out 0.3s backwards;
+      }
+
+      .footer a {
+        color: var(--accent);
+        text-decoration: none;
+      }
+
+      /* ========== ANIMATIONS ========== */
+      @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(16px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+
+      @keyframes fadeInDown {
+        from { opacity: 0; transform: translateY(-16px); }
+        to   { opacity: 1; transform: translateY(0); }
+      }
+
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50%      { opacity: 0.6; }
+      }
+
+      @keyframes spin {
+        from { transform: rotate(0deg); }
+        to   { transform: rotate(360deg); }
+      }
+
+      /* ========== REPORT VIEWER ========== */
+      .report-viewer {
+        animation: fadeInUp 0.5s ease-out 0.25s backwards;
+      }
+
+      .report-frame {
+        width: 100%;
+        height: 1200px;
+        border: 1px solid var(--border-glass);
+        border-radius: var(--radius-md);
+        background: #ffffff;
+        display: block;
+      }
+
+      .report-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 16px;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .btn-secondary {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 16px;
+        background: var(--btn-secondary-bg);
+        border: 1px solid var(--border-glass);
+        border-radius: var(--radius-sm);
+        color: var(--text-secondary);
+        font-family: var(--font);
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: var(--transition);
+      }
+
+      .btn-secondary:hover {
+        background: var(--accent-glow);
+        border-color: var(--border-accent);
+        color: var(--accent);
+      }
+
+      .btn-secondary svg {
+        width: 15px;
+        height: 15px;
+      }
+
+      /* ========== THEME TOGGLE ========== */
+      .theme-toggle {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        z-index: 1000;
+        width: 52px;
+        height: 52px;
+        border-radius: 50%;
+        border: 1px solid var(--border-glass);
+        background: var(--bg-card);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: var(--shadow-lg);
+        transition: var(--transition);
+        padding: 0;
+        color: var(--text-secondary);
+      }
+
+      .theme-toggle:hover {
+        transform: scale(1.1);
+        border-color: var(--border-accent);
+        background: var(--accent-glow);
+        color: var(--accent);
+        box-shadow: var(--shadow-lg), 0 0 20px var(--accent-glow);
+      }
+
+      .theme-toggle:active {
+        transform: scale(0.95);
+      }
+
+      .theme-toggle svg {
+        width: 22px;
+        height: 22px;
+        transition: transform 0.4s cubic-bezier(.4,0,.2,1), opacity 0.3s ease;
+      }
+
+      .theme-toggle .icon-sun,
+      .theme-toggle .icon-moon {
+        position: absolute;
+      }
+
+      [data-theme="dark"] .theme-toggle .icon-sun {
+        opacity: 1;
+        transform: rotate(0deg) scale(1);
+      }
+      [data-theme="dark"] .theme-toggle .icon-moon {
+        opacity: 0;
+        transform: rotate(-90deg) scale(0.5);
+      }
+
+      [data-theme="light"] .theme-toggle .icon-sun {
+        opacity: 0;
+        transform: rotate(90deg) scale(0.5);
+      }
+      [data-theme="light"] .theme-toggle .icon-moon {
+        opacity: 1;
+        transform: rotate(0deg) scale(1);
+      }
+
+      /* Smooth theme transition on all themed elements */
+      html[data-theme] {
+        transition: background-color 0.4s ease;
+      }
+      html[data-theme] body,
+      html[data-theme] .card,
+      html[data-theme] .text-input,
+      html[data-theme] .file-drop,
+      html[data-theme] .stat-card,
+      html[data-theme] .data-table th,
+      html[data-theme] .data-table td,
+      html[data-theme] .data-table tbody tr,
+      html[data-theme] .alert,
+      html[data-theme] .btn-secondary,
+      html[data-theme] .loader-overlay,
+      html[data-theme] .header__badge {
+        transition: background 0.4s ease, background-color 0.4s ease, color 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease;
+      }
+
+      /* ========== RESPONSIVE ========== */
+      @media (max-width: 640px) {
+        .page-wrapper { padding: 24px 16px 40px; }
+        .card { padding: 20px; }
+        .header h1 { font-size: 22px; }
+        .theme-toggle { bottom: 16px; right: 16px; width: 46px; height: 46px; }
+      }
+
+      /* ========== FULLSCREEN LOADER OVERLAY ========== */
+      .loader-overlay {
+        position: fixed;
+        inset: 0;
+        background: var(--loader-overlay-bg);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s ease;
+      }
+
+      .loader-overlay.active {
+        opacity: 1;
+        pointer-events: all;
+      }
+
+      .loader-spinner {
+        width: 50px;
+        height: 50px;
+        border: 4px solid rgba(56, 189, 248, 0.2);
+        border-top-color: var(--accent);
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-bottom: 20px;
+      }
+
+      .loader-text {
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--text-primary);
+        text-align: center;
+      }
+
+      .loader-subtext {
+        font-size: 13px;
+        color: var(--text-muted);
+        margin-top: 8px;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- THEME TOGGLE BUTTON -->
+    <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Ganti tema" title="Ganti tema terang/gelap">
+      <!-- Sun icon (shown in dark mode → click to switch to light) -->
+      <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="5"/>
+        <line x1="12" y1="1" x2="12" y2="3"/>
+        <line x1="12" y1="21" x2="12" y2="23"/>
+        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+        <line x1="1" y1="12" x2="3" y2="12"/>
+        <line x1="21" y1="12" x2="23" y2="12"/>
+        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+      </svg>
+      <!-- Moon icon (shown in light mode → click to switch to dark) -->
+      <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+      </svg>
+    </button>
+
+    <!-- LOADER OVERLAY -->
+    <div class="loader-overlay" id="loader-overlay">
+      <div class="loader-spinner"></div>
+      <div class="loader-text">Memproses Data...</div>
+      <div class="loader-subtext">Mengirim file dan menunggu hasil dari Webhook (N8N)</div>
+    </div>
+    <div class="page-wrapper">
+
+      <!-- HEADER -->
+      <header class="header" style="position: relative;">
+        {% if success or error %}
+        <a href="/" title="Kembali ke Beranda" style="position: absolute; left: 0; top: 0; padding: 12px; background: var(--btn-secondary-bg); border: 1px solid var(--border-glass); border-radius: 50%; color: var(--text-secondary); transition: var(--transition); display: flex; align-items: center; justify-content: center;" onmouseover="this.style.background='var(--accent-glow)'; this.style.color='var(--accent)'; this.style.borderColor='var(--border-accent)';" onmouseout="this.style.background='var(--btn-secondary-bg)'; this.style.color='var(--text-secondary)'; this.style.borderColor='var(--border-glass)';">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width: 26px; height: 26px;"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        </a>
+        {% endif %}
+        <h1>Sistem Kewaspadaan Dini<br/>dan Respon</h1>
+      </header>
+
+      <!-- SUCCESS ALERT -->
+      {% if success %}
+      <div class="alert alert--success" role="alert">
+        <svg class="alert__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        <div class="alert__content" style="display: flex; align-items: center;">
+          <div class="alert__title" style="margin-bottom: 0;">Proses Berhasil!</div>
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- ERROR ALERT -->
+      {% if error %}
+      <div class="alert alert--error" role="alert">
+        <svg class="alert__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+        <div class="alert__content">
+          <div class="alert__title">Proses Gagal</div>
+          <div class="alert__body">{{ error }}</div>
+        </div>
+      </div>
+      {% endif %}
+
+      {% if not success %}
+      <!-- UPLOAD FORM CARD -->
+      <div class="card card--form">
+        <div class="card__title">
+          <div class="card__title-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+          </div>
+          Upload File SKDR
+        </div>
+        <div class="card__subtitle">Pilih keempat file Excel (.xlsx / .xls) yang sesuai untuk memulai proses parsing.</div>
+
+        <form method="post" enctype="multipart/form-data" id="skdr-form">
+
+          <!-- Nama Fasyankes -->
+          <div class="form-section">
+            <label class="form-label" for="rumah_sakit">
+              Nama Fasyankes / Rumah Sakit <span class="required">*</span>
+            </label>
+            <input
+              class="text-input"
+              id="rumah_sakit"
+              name="rumah_sakit"
+              type="text"
+              value="{{ rumah_sakit or '' }}"
+              placeholder="Contoh: RSUD dr. Soedarso Pontianak"
+              required
+              autocomplete="organization"
+            />
+          </div>
+
+          <!-- File Upload Grid -->
+          <div class="form-section">
+            <label class="form-label">File SKDR <span class="required">*</span></label>
+            <div class="file-grid">
+
+              <!-- Total Kasus (Blue) -->
+              <div class="file-drop" id="drop-total_kasus" style="--accent: #38bdf8; --accent-glow: rgba(56, 189, 248, 0.08); --success: #38bdf8; --success-bg: rgba(56, 189, 248, 0.08);">
+                <input id="total_kasus" name="total_kasus" type="file" accept=".xlsx,.xls" required />
+                <svg class="file-drop__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <span class="file-drop__label">SKDR Kasus Bulanan</span>
+                <span class="file-drop__hint">.xlsx / .xls</span>
+                <span class="file-drop__filename" id="fname-total_kasus"></span>
+              </div>
+
+              <!-- Total Kematian (Rose) -->
+              <div class="file-drop" id="drop-total_kematian" style="--accent: #f43f5e; --accent-glow: rgba(244, 63, 94, 0.08); --success: #f43f5e; --success-bg: rgba(244, 63, 94, 0.08);">
+                <input id="total_kematian" name="total_kematian" type="file" accept=".xlsx,.xls" required />
+                <svg class="file-drop__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <span class="file-drop__label">SKDR Kematian Bulanan</span>
+                <span class="file-drop__hint">.xlsx / .xls</span>
+                <span class="file-drop__filename" id="fname-total_kematian"></span>
+              </div>
+
+              <!-- Kasus Minggu Ini (Emerald) -->
+              <div class="file-drop" id="drop-kasus_minggu_ini" style="--accent: #10b981; --accent-glow: rgba(16, 185, 129, 0.08); --success: #10b981; --success-bg: rgba(16, 185, 129, 0.08);">
+                <input id="kasus_minggu_ini" name="kasus_minggu_ini" type="file" accept=".xlsx,.xls" required />
+                <svg class="file-drop__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <span class="file-drop__label">SKDR Kasus Minggu Terakhir</span>
+                <span class="file-drop__hint">.xlsx / .xls</span>
+                <span class="file-drop__filename" id="fname-kasus_minggu_ini"></span>
+              </div>
+
+              <!-- Kematian Minggu Ini (Amber) -->
+              <div class="file-drop" id="drop-kematian_minggu_ini" style="--accent: #f59e0b; --accent-glow: rgba(245, 158, 11, 0.08); --success: #f59e0b; --success-bg: rgba(245, 158, 11, 0.08);">
+                <input id="kematian_minggu_ini" name="kematian_minggu_ini" type="file" accept=".xlsx,.xls" required />
+                <svg class="file-drop__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <span class="file-drop__label">SKDR Kematian Minggu Terakhir</span>
+                <span class="file-drop__hint">.xlsx / .xls</span>
+                <span class="file-drop__filename" id="fname-kematian_minggu_ini"></span>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Submit -->
+          <button class="btn-submit" type="submit" id="btn-submit">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+            Kirim File
+          </button>
+
+        </form>
+      </div>
+      {% endif %}
+
+      <!-- RESULT PREVIEW -->
+      {% if preview %}
+      <div class="card" style="animation-delay: 0.2s; animation-fill-mode: backwards;">
+        <div class="card__title" style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 24px;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div class="card__title-icon" style="background: rgba(52,211,153,0.12); border-color: rgba(52,211,153,0.25);">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #34d399;"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+            </div>
+            Pratinjau Data
+          </div>
+          <div style="background: linear-gradient(135deg, #f59e0b, #ea580c); color: #fff; padding: 8px 18px; border-radius: 14px; text-align: center; box-shadow: 0 6px 16px rgba(234, 88, 12, 0.35); display: flex; flex-direction: column; justify-content: center; line-height: 1.2;">
+            {% set p_parts = periode.split('-') %}
+            <span style="font-size: 15px; font-weight: 700; opacity: 0.95; letter-spacing: 0.05em;">{{ p_parts[0] }}</span>
+            <span style="font-size: 26px; font-weight: 900; letter-spacing: 0.02em;">{{ p_parts[1] if p_parts|length > 1 else '' }}</span>
+          </div>
+        </div>
+
+        <!-- Summary Stats -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-card__value">{{ "{:,}".format(summary.total_kasus) }}</div>
+            <div class="stat-card__label">KASUS {{ p_parts[0] }}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card__value" style="color: var(--error);">{{ "{:,}".format(summary.total_kematian) }}</div>
+            <div class="stat-card__label">KEMATIAN {{ p_parts[0] }}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card__value" style="color: var(--warning);">{{ "{:,}".format(summary.total_kasus_mingguan) }}</div>
+            <div class="stat-card__label">KASUS {{ p_parts[1] if p_parts|length > 1 else '' }}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-card__value" style="color: #c084fc;">{{ "{:,}".format(summary.total_kematian_mingguan) }}</div>
+            <div class="stat-card__label">KEMATIAN {{ p_parts[1] if p_parts|length > 1 else '' }}</div>
+          </div>
+        </div>
+
+        <!-- Data Table -->
+        <div style="margin-bottom: 12px; font-size: 15px; font-weight: 700; color: var(--text-primary);">Daftar 10 Kasus Penyakit Teratas</div>
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="text-align: center; width: 48px;">No</th>
+                <th>Penyakit</th>
+                <th class="num">KASUS {{ p_parts[0] }}</th>
+                <th class="num">KEMATIAN {{ p_parts[0] }}</th>
+                <th class="num">KASUS {{ p_parts[1] if p_parts|length > 1 else '' }}</th>
+                <th class="num">KEMATIAN {{ p_parts[1] if p_parts|length > 1 else '' }}</th>
+                <th class="num">CFR (%)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for row in preview %}
+              <tr>
+                <td style="text-align: center; color: var(--text-muted); font-weight: 500;">{{ loop.index }}</td>
+                <td>{{ row.penyakit }}</td>
+                <td class="num">{{ "{:,}".format(row.total_kasus) }}</td>
+                <td class="num">{{ "{:,}".format(row.total_kematian) }}</td>
+                <td class="num">{{ "{:,}".format(row.kasus_minggu_ini) }}</td>
+                <td class="num">{{ "{:,}".format(row.kematian_minggu_ini) }}</td>
+                <td class="num cfr-cell">{% if row.cfr is not none %}{{ row.cfr }}%{% else %}—{% endif %}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+	      </div>
+	      {% endif %}
+
+	      <!-- TREND CHARTS -->
+	      {% if trends and preview and preview|length >= 3 %}
+	      <div class="card" style="margin-bottom: 24px; animation-delay: 0.25s;">
+	        <div class="card__title" style="margin-bottom: 24px;">
+	          <div class="card__title-icon" style="background: rgba(14,165,233,0.12); border-color: rgba(14,165,233,0.25);">
+	            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #0ea5e9;"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+	          </div>
+	          Chart
+	        </div>
+	        <div class="charts-container" style="display: grid; grid-template-columns: 1fr; gap: 24px;">
+	          <div class="chart-wrapper" style="background: var(--surface-hover); border-radius: var(--radius-md); padding: 16px; position: relative; height: 340px; width: 100%;">
+	            <canvas id="chart1"></canvas>
+	          </div>
+	          <div class="chart-wrapper" style="background: var(--surface-hover); border-radius: var(--radius-md); padding: 16px; position: relative; height: 340px; width: 100%;">
+	            <canvas id="chart2"></canvas>
+	          </div>
+	          <div class="chart-wrapper" style="background: var(--surface-hover); border-radius: var(--radius-md); padding: 16px; position: relative; height: 340px; width: 100%;">
+	            <canvas id="chart3"></canvas>
+	          </div>
+	        </div>
+	      </div>
+	      {% endif %}
+
+	      <!-- HTML REPORT FROM WEBHOOK -->
+	      {% if html_report %}
+	      <div class="card report-viewer">
+	        <div class="card__title" style="margin-bottom: 24px;">
+          <div class="card__title-icon" style="background: rgba(168,85,247,0.12); border-color: rgba(168,85,247,0.25);">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #a855f7;"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22 6 12 13 2 6"/></svg>
+          </div>
+          Laporan
+        </div>
+
+        <div class="report-toolbar">
+          <div style="display: flex; gap: 8px;">
+            <button class="btn-secondary" onclick="copyReportText()" type="button" id="btn-copy">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              <span>Salin Teks</span>
+            </button>
+            <button class="btn-secondary" onclick="printReport()" type="button">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+              Cetak
+            </button>
+            <button class="btn-secondary" onclick="toggleFullscreen()" type="button" id="btn-fullscreen">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+              Fullscreen
+            </button>
+          </div>
+        </div>
+
+        <iframe
+          class="report-frame"
+          id="report-iframe"
+          srcdoc="{{ html_report|e }}"
+          sandbox="allow-same-origin allow-popups"
+          title="Laporan Webhook"
+        ></iframe>
+      </div>
+      {% endif %}
+
+      <!-- FOOTER -->
+      <footer class="footer">
+        SKDR PARSER V1.2 — <a href="https://github.com/rusli3/" target="_blank" rel="noopener noreferrer">Fork me on GitHub</a>
+      </footer>
+
+    </div>
+
+    <!-- JAVASCRIPT -->
+    <script>
+      // Mencegah resubmission form saat user merefresh halaman (F5)
+      if (window.history.replaceState) {
+        window.history.replaceState(null, null, window.location.href);
+      }
+
+      // File input change — show filename & visual state
+      document.querySelectorAll('.file-drop input[type="file"]').forEach(input => {
+        const dropZone = input.closest('.file-drop');
+        const fnameEl = dropZone.querySelector('.file-drop__filename');
+
+        input.addEventListener('change', () => {
+          if (input.files.length > 0) {
+            dropZone.classList.add('file-drop--has-file');
+            fnameEl.textContent = '✓ ' + input.files[0].name;
+          } else {
+            dropZone.classList.remove('file-drop--has-file');
+            fnameEl.textContent = '';
+          }
+          updateSubmitState();
+        });
+
+        // Drag & drop visual feedback
+        dropZone.addEventListener('dragover', e => {
+          e.preventDefault();
+          dropZone.classList.add('file-drop--dragover');
+        });
+        dropZone.addEventListener('dragleave', () => {
+          dropZone.classList.remove('file-drop--dragover');
+        });
+        dropZone.addEventListener('drop', () => {
+          dropZone.classList.remove('file-drop--dragover');
+        });
+      });
+
+	      // Update submit button state
+	      function updateSubmitState() {
+	        const rsInput = document.getElementById('rumah_sakit');
+	        const btn = document.getElementById('btn-submit');
+	        // Form elements only exist when the upload form is visible.
+	        if (!rsInput || !btn) return;
+
+	        const allFilled = ['total_kasus', 'total_kematian', 'kasus_minggu_ini', 'kematian_minggu_ini'].every(id => {
+	          const el = document.getElementById(id);
+	          return el && el.files && el.files.length > 0;
+	        });
+	        const rsName = rsInput.value.trim();
+
+	        if (allFilled && rsName) {
+	          btn.style.opacity = '1';
+	        }
+	      }
+
+	      const rsInput = document.getElementById('rumah_sakit');
+	      if (rsInput) rsInput.addEventListener('input', updateSubmitState);
+
+	      // Prevent double submit and show loader
+	      const form = document.getElementById('skdr-form');
+	      if (form) {
+	        form.addEventListener('submit', function() {
+	          const btn = document.getElementById('btn-submit');
+	          if (btn) btn.disabled = true;
+	          const overlay = document.getElementById('loader-overlay');
+	          if (overlay) overlay.classList.add('active');
+	        });
+	      }
+
+      // Copy text from iframe
+      function copyReportText() {
+        const iframe = document.getElementById('report-iframe');
+        if (!iframe) return;
+        
+        try {
+          const text = iframe.contentDocument.body.innerText;
+          navigator.clipboard.writeText(text).then(() => {
+            const btnSpan = document.querySelector('#btn-copy span');
+            const originalText = btnSpan.textContent;
+            btnSpan.textContent = 'Disalin!';
+            setTimeout(() => { btnSpan.textContent = originalText; }, 2000);
+          }).catch(err => {
+            console.error('Gagal menyalin:', err);
+            alert('Gagal menyalin teks. Silakan coba pilih teks secara manual.');
+          });
+        } catch (e) {
+          console.error(e);
+          alert('Tidak dapat menyalin isi karena pengaturan keamanan browser (Same-Origin). Silakan pilih dan salin secara manual.');
+        }
+      }
+
+      // Print report from iframe
+      function printReport() {
+        const iframe = document.getElementById('report-iframe');
+        if (iframe) {
+          iframe.contentWindow.focus();
+          iframe.contentWindow.print();
+        }
+      }
+
+      // Toggle iframe fullscreen
+      function toggleFullscreen() {
+        const iframe = document.getElementById('report-iframe');
+        if (!iframe) return;
+        if (document.fullscreenElement) {
+          document.exitFullscreen();
+        } else {
+          iframe.requestFullscreen().catch(() => {});
+        }
+      }
+	      // ========== THEME TOGGLE ==========
+		      (function() {
+		        const html = document.documentElement;
+		        const toggle = document.getElementById('theme-toggle');
+		        const STORAGE_KEY = 'skdr-theme';
+
+        // Determine initial theme: saved > system preference > dark
+        function getInitialTheme() {
+          const saved = localStorage.getItem(STORAGE_KEY);
+          if (saved === 'light' || saved === 'dark') return saved;
+          if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+            return 'light';
+          }
+          return 'dark';
+        }
+
+        function setTheme(theme) {
+          html.setAttribute('data-theme', theme);
+          localStorage.setItem(STORAGE_KEY, theme);
+        }
+
+	        // Apply initial theme
+	        setTheme(getInitialTheme());
+
+	        // Toggle on click
+	        if (toggle) {
+	          toggle.addEventListener('click', function() {
+	            const current = html.getAttribute('data-theme');
+	            setTheme(current === 'dark' ? 'light' : 'dark');
+	          });
+	        }
+
+        // Listen for system preference changes
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
+          if (!localStorage.getItem(STORAGE_KEY)) {
+            setTheme(e.matches ? 'dark' : 'light');
+          }
+        });
+	      })();
+
+	      // ========== TREND CHARTS (Top 3) ==========
+	      {% if trends and preview and preview|length >= 3 %}
+	      (function() {
+	        const trendsData = {{ trends | tojson | safe }};
+	        const top3 = [
+	          "{{ preview[0].penyakit }}",
+	          "{{ preview[1].penyakit }}",
+	          "{{ preview[2].penyakit }}"
+	        ];
+
+	        const chartColors = [
+	          '#f43f5e', // Rose
+	          '#f59e0b', // Amber
+	          '#10b981'  // Emerald
+	        ];
+
+	        // Guard: if Chart.js failed to load (CDN blocked/offline), skip silently.
+	        if (!window.Chart) return;
+	        // Register datalabels plugin if available (value labels on each point).
+	        if (window.ChartDataLabels) {
+	          Chart.register(ChartDataLabels);
+	        }
+
+	        top3.forEach((penyakit, index) => {
+	          const canvas = document.getElementById(`chart${index + 1}`);
+	          if (!canvas || !trendsData[penyakit]) return;
+
+	          const dataPoints = trendsData[penyakit];
+	          const labels = Object.keys(dataPoints).sort((a, b) => {
+	            const numA = parseInt(String(a).replace('M-', ''), 10) || 0;
+	            const numB = parseInt(String(b).replace('M-', ''), 10) || 0;
+	            return numA - numB;
+	          });
+	          const data = labels.map(label => dataPoints[label]);
+
+	          const ctx = canvas.getContext('2d');
+	          new Chart(ctx, {
+	            type: 'line',
+	            data: {
+	              labels: labels,
+	              datasets: [{
+	                label: penyakit,
+	                data: data,
+	                borderColor: chartColors[index],
+	                backgroundColor: chartColors[index] + '20',
+	                borderWidth: 2,
+	                pointRadius: 4,
+	                pointHoverRadius: 5,
+	                pointBackgroundColor: chartColors[index],
+	                fill: true,
+	                tension: 0.3
+	              }]
+	            },
+	            options: {
+	              responsive: true,
+	              maintainAspectRatio: false,
+	              plugins: {
+	                datalabels: {
+	                  // Match label color to the series line color (no background).
+	                  color: (ctx) => ctx.dataset && ctx.dataset.borderColor ? ctx.dataset.borderColor : '#e2e8f0',
+	                  anchor: 'end',
+	                  align: 'top',
+	                  offset: 6,
+	                  clamp: true,
+	                  clip: false,
+	                  font: { family: 'Inter', size: 11, weight: '700' },
+	                  formatter: (v) => (v === null || v === undefined ? '' : String(v))
+	                },
+	                legend: {
+	                  labels: { color: '#94a3b8', font: { family: 'Inter', size: 12 } }
+	                },
+	                tooltip: {
+	                  backgroundColor: 'rgba(15, 23, 42, 0.9)',
+	                  titleFont: { family: 'Inter', size: 13 },
+	                  bodyFont: { family: 'Inter', size: 13 },
+	                  padding: 12,
+	                  cornerRadius: 8
+	                }
+	              },
+	              scales: {
+	                x: {
+	                  ticks: { color: '#64748b', font: { family: 'Inter', size: 11 } },
+	                  grid: { color: 'rgba(148, 163, 184, 0.16)', drawBorder: false }
+	                },
+	                y: {
+	                  beginAtZero: true,
+	                  ticks: { color: '#64748b', font: { family: 'Inter', size: 11 }, precision: 0 },
+	                  grid: { color: 'rgba(148, 163, 184, 0.16)', drawBorder: false }
+	                }
+	              }
+	            }
+	          });
+	        });
+	      })();
+	      {% endif %}
+	    </script>
+	  </body>
+	</html>
