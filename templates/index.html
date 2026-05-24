@@ -947,8 +947,8 @@
                 <span class="file-drop__filename" id="fname-total_kasus"></span>
               </div>
 
-              <!-- Total Kematian (Rose) -->
-              <div class="file-drop" id="drop-total_kematian" style="--accent: #f43f5e; --accent-glow: rgba(244, 63, 94, 0.08); --success: #f43f5e; --success-bg: rgba(244, 63, 94, 0.08);">
+	              <!-- Total Kematian (Indigo) -->
+	              <div class="file-drop" id="drop-total_kematian" style="--accent: #6366f1; --accent-glow: rgba(99, 102, 241, 0.08); --success: #6366f1; --success-bg: rgba(99, 102, 241, 0.08);">
                 <input id="total_kematian" name="total_kematian" type="file" accept=".xlsx,.xls" required />
                 <svg class="file-drop__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                 <span class="file-drop__label">SKDR Kematian Bulanan</span>
@@ -997,12 +997,20 @@
             </div>
             Pratinjau Data
           </div>
-          <div style="background: linear-gradient(135deg, #f59e0b, #ea580c); color: #fff; padding: 8px 18px; border-radius: 14px; text-align: center; box-shadow: 0 6px 16px rgba(234, 88, 12, 0.35); display: flex; flex-direction: column; justify-content: center; line-height: 1.2;">
-            {% set p_parts = periode.split('-') %}
-            <span style="font-size: 15px; font-weight: 700; opacity: 0.95; letter-spacing: 0.05em;">{{ p_parts[0] }}</span>
-            <span style="font-size: 26px; font-weight: 900; letter-spacing: 0.02em;">{{ p_parts[1] if p_parts|length > 1 else '' }}</span>
-          </div>
-        </div>
+	          <div
+	            style="background: linear-gradient(135deg, #f59e0b, #ea580c); color: #fff; padding: 10px 18px; border-radius: 14px; text-align: center; box-shadow: 0 6px 16px rgba(234, 88, 12, 0.35); display: flex; align-items: center; justify-content: center; line-height: 1.1; cursor: pointer; user-select: none;"
+	            role="button"
+	            tabindex="0"
+	            title="Klik untuk copy prompt"
+	            onclick="copyPrompt()"
+	            onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); copyPrompt(); }"
+	          >
+	            {% set p_parts = periode.split('-') %}
+	            <span style="font-size: 16px; font-weight: 900; letter-spacing: 0.04em;">
+	              {{ periode.replace('-', ' ') }}
+	            </span>
+	          </div>
+	        </div>
 
         <!-- Summary Stats -->
         <div class="stats-grid">
@@ -1083,12 +1091,14 @@
 	      <!-- HTML REPORT FROM WEBHOOK -->
 	      {% if html_report %}
 	      <div class="card report-viewer">
-	        <div class="card__title" style="margin-bottom: 24px;">
-          <div class="card__title-icon" style="background: rgba(168,85,247,0.12); border-color: rgba(168,85,247,0.25);">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #a855f7;"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22 6 12 13 2 6"/></svg>
-          </div>
-          Laporan
-        </div>
+	        <div class="card__title" style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; gap: 12px;">
+	          <div style="display: flex; align-items: center; gap: 12px;">
+	            <div class="card__title-icon" style="background: rgba(168,85,247,0.12); border-color: rgba(168,85,247,0.25);">
+	              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #a855f7;"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22 6 12 13 2 6"/></svg>
+	            </div>
+	            <span>Laporan</span>
+	          </div>
+	        </div>
 
         <div class="report-toolbar">
           <div style="display: flex; gap: 8px;">
@@ -1192,27 +1202,69 @@
 	        });
 	      }
 
-      // Copy text from iframe
-      function copyReportText() {
-        const iframe = document.getElementById('report-iframe');
-        if (!iframe) return;
-        
-        try {
-          const text = iframe.contentDocument.body.innerText;
-          navigator.clipboard.writeText(text).then(() => {
-            const btnSpan = document.querySelector('#btn-copy span');
-            const originalText = btnSpan.textContent;
-            btnSpan.textContent = 'Disalin!';
-            setTimeout(() => { btnSpan.textContent = originalText; }, 2000);
-          }).catch(err => {
-            console.error('Gagal menyalin:', err);
-            alert('Gagal menyalin teks. Silakan coba pilih teks secara manual.');
-          });
-        } catch (e) {
-          console.error(e);
-          alert('Tidak dapat menyalin isi karena pengaturan keamanan browser (Same-Origin). Silakan pilih dan salin secara manual.');
-        }
-      }
+	      // Copy text from iframe
+	      function copyReportText() {
+	        const iframe = document.getElementById('report-iframe');
+	        if (!iframe) return;
+	        
+	        try {
+	          const text = iframe.contentDocument.body.innerText;
+	          navigator.clipboard.writeText(text).then(() => {
+	            const btnSpan = document.querySelector('#btn-copy span');
+	            const originalText = btnSpan.textContent;
+	            btnSpan.textContent = 'Disalin!';
+	            setTimeout(() => { btnSpan.textContent = originalText; }, 2000);
+	          }).catch(err => {
+	            console.error('Gagal menyalin:', err);
+	            alert('Gagal menyalin teks. Silakan coba pilih teks secara manual.');
+	          });
+	        } catch (e) {
+	          console.error(e);
+	          alert('Tidak dapat menyalin isi karena pengaturan keamanan browser (Same-Origin). Silakan pilih dan salin secara manual.');
+	        }
+	      }
+
+	      // Copy prompt JSON (system_prompt static from prompt.md, user_prompt built from current payload)
+	      function copyPrompt() {
+	        const systemPrompt = {{ (system_prompt | default('')) | tojson | safe }};
+	        const payload = {{ (payload | default({})) | tojson | safe }};
+	        const userPrompt =
+	          "Berikut payload JSON epidemiologi:\\n\\n" +
+	          JSON.stringify(payload, null, 2) +
+	          "\\n\\nBuat laporan epidemiologi resmi sesuai instruksi.\\n";
+
+	        const promptArr = [{
+	          system_prompt: systemPrompt,
+	          user_prompt: userPrompt,
+	          payload: payload
+	        }];
+	        const text = JSON.stringify(promptArr, null, 2);
+
+	        if (navigator.clipboard && window.isSecureContext) {
+	          navigator.clipboard.writeText(text).catch(() => {
+	            // Fallback if clipboard API fails
+	            const ta = document.createElement('textarea');
+	            ta.value = text;
+	            ta.setAttribute('readonly', '');
+	            ta.style.position = 'fixed';
+	            ta.style.left = '-9999px';
+	            document.body.appendChild(ta);
+	            ta.select();
+	            try { document.execCommand('copy'); } catch (_) {}
+	            document.body.removeChild(ta);
+	          });
+	        } else {
+	          const ta = document.createElement('textarea');
+	          ta.value = text;
+	          ta.setAttribute('readonly', '');
+	          ta.style.position = 'fixed';
+	          ta.style.left = '-9999px';
+	          document.body.appendChild(ta);
+	          ta.select();
+	          try { document.execCommand('copy'); } catch (_) {}
+	          document.body.removeChild(ta);
+	        }
+	      }
 
       // Print report from iframe
       function printReport() {

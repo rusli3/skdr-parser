@@ -11,6 +11,7 @@ from flask import Flask, render_template, request
 WEBHOOK_URL = os.getenv("SKDR_WEBHOOK_URL", "").strip()
 UPLOAD_DIR = Path("uploads")
 OUTPUT_DIR = Path("output")
+PROMPT_TEMPLATE_PATH = Path("prompt.md")
 
 app = Flask(__name__)
 UPLOAD_DIR.mkdir(exist_ok=True)
@@ -29,6 +30,22 @@ DISEASE_ALIASES = {
     "PNEMONIA": "Pneumonia",
     "PNUMONIA": "Pneumonia",
 }
+
+def load_system_prompt() -> str:
+    """
+    Load the static system prompt template from prompt.md.
+    prompt.md is expected to be a JSON array with at least one object containing "system_prompt".
+    """
+    try:
+        raw = PROMPT_TEMPLATE_PATH.read_text(encoding="utf-8")
+        arr = json.loads(raw)
+        if isinstance(arr, list) and arr and isinstance(arr[0], dict):
+            sp = arr[0].get("system_prompt", "")
+            return sp if isinstance(sp, str) else ""
+    except Exception:
+        pass
+    return ""
+
 
 
 def extract_week_info(file_path: Path) -> tuple[int, int, int]:
@@ -375,7 +392,8 @@ def save_and_send_json(df: pd.DataFrame, rumah_sakit: str) -> tuple[dict, str]:
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "GET":
-        return render_template("index.html")
+        # Provide defaults so the template JS (Copy Prompt) never sees undefined.
+        return render_template("index.html", payload={}, system_prompt=load_system_prompt())
 
     try:
         rumah_sakit = request.form.get("rumah_sakit", "").strip()
@@ -413,6 +431,8 @@ def index():
             summary=payload["summary"],
             preview=sorted(payload["data"], key=lambda x: x["total_kasus"], reverse=True)[:10],
             trends=trends,
+            payload=payload,
+            system_prompt=load_system_prompt(),
             html_report=html_report,
         )
     except Exception as e:
