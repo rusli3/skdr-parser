@@ -1,7 +1,11 @@
 # SKDR Web App
 
 Aplikasi web untuk:
-- Upload 4 file SKDR (`ALL`, `MD`, `MGU_ALL`, `MGU_MD`)
+- Upload 4 file SKDR:
+  - `total_kasus`
+  - `total_kematian`
+  - `kasus_minggu_ini`
+  - `kematian_minggu_ini`
 - Validasi konsistensi minggu epidemiologi
 - Bentuk payload JSON (`metadata`, `summary`, `indikator`, `data`)
 - Kirim payload langsung ke webhook (`application/json`)
