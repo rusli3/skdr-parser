@@ -1089,7 +1089,7 @@
 	      {% endif %}
 
 	      <!-- HTML REPORT FROM WEBHOOK -->
-	      {% if html_report %}
+	      {% if success %}
 	      <div class="card report-viewer">
 	        <div class="card__title" style="margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center; gap: 12px;">
 	          <div style="display: flex; align-items: center; gap: 12px;">
@@ -1100,32 +1100,46 @@
 	          </div>
 	        </div>
 
-        <div class="report-toolbar">
-          <div style="display: flex; gap: 8px;">
-            <button class="btn-secondary" onclick="copyReportText()" type="button" id="btn-copy">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-              <span>Salin Teks</span>
-            </button>
-            <button class="btn-secondary" onclick="printReport()" type="button">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-              Cetak
-            </button>
-            <button class="btn-secondary" onclick="toggleFullscreen()" type="button" id="btn-fullscreen">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
-              Fullscreen
-            </button>
-          </div>
-        </div>
+	        {% if html_report %}
+	        <div class="report-toolbar">
+	          <div style="display: flex; gap: 8px;">
+	            <button class="btn-secondary" onclick="copyReportText()" type="button" id="btn-copy">
+	              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+	              <span>Salin Teks</span>
+	            </button>
+	            <button class="btn-secondary" onclick="printReport()" type="button">
+	              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+	              Cetak
+	            </button>
+	            <button class="btn-secondary" onclick="toggleFullscreen()" type="button" id="btn-fullscreen">
+	              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+	              Fullscreen
+	            </button>
+	          </div>
+	        </div>
 
-        <iframe
-          class="report-frame"
-          id="report-iframe"
-          srcdoc="{{ html_report|e }}"
-          sandbox="allow-same-origin allow-popups"
-          title="Laporan Webhook"
-        ></iframe>
-      </div>
-      {% endif %}
+	        <iframe
+	          class="report-frame"
+	          id="report-iframe"
+	          srcdoc="{{ html_report|e }}"
+	          sandbox="allow-same-origin allow-popups"
+	          title="Laporan Webhook"
+	        ></iframe>
+	        {% else %}
+	        <div data-report-pending style="background: var(--surface-hover); border: 1px dashed rgba(148, 163, 184, 0.25); border-radius: var(--radius-md); padding: 16px;">
+	          <div style="font-weight: 800; color: var(--text-primary); margin-bottom: 8px;">Laporan sedang dalam proses</div>
+	          <div style="color: var(--text-secondary); line-height: 1.55;">
+	            Sistem sedang menunggu respons webhook. Silakan coba lagi beberapa saat.
+	            <div style="margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap;">
+	              <button class="btn-secondary" type="button" onclick="refreshReport()" id="btn-refresh-report">
+	                Muat Ulang Laporan
+	              </button>
+	            </div>
+	          </div>
+	        </div>
+	        {% endif %}
+	      </div>
+	      {% endif %}
 
       <!-- FOOTER -->
       <footer class="footer">
@@ -1265,6 +1279,69 @@
 	          document.body.removeChild(ta);
 	        }
 	      }
+
+	      async function refreshReport(opts) {
+	        const silent = opts && opts.silent;
+	        const rid = {{ (report_id | default('')) | tojson | safe }};
+	        if (!rid) return;
+	        const btn = document.getElementById('btn-refresh-report');
+	        const original = btn ? btn.textContent : '';
+	        if (btn) { btn.disabled = true; btn.textContent = 'Memuat...'; }
+	        try {
+	          const res = await fetch(`/report/${rid}`, { headers: { 'Accept': 'application/json' }});
+	          const data = await res.json();
+	          if (data && data.ok && data.html) {
+	            // Replace pending box with iframe
+	            let iframe = document.getElementById('report-iframe');
+	            if (!iframe) {
+	              iframe = document.createElement('iframe');
+	              iframe.className = 'report-frame';
+	              iframe.id = 'report-iframe';
+	              iframe.setAttribute('sandbox', 'allow-same-origin allow-popups');
+	              iframe.setAttribute('title', 'Laporan Webhook');
+	              const viewer = document.querySelector('.report-viewer');
+	              if (viewer) viewer.appendChild(iframe);
+	            }
+	            iframe.srcdoc = data.html;
+	            // Remove the pending container if it exists
+	            const pending = document.querySelector('.report-viewer [data-report-pending]');
+	            if (pending) pending.remove();
+	            // Stop any polling once report is available.
+	            if (window.__skdrReportPoll) window.__skdrReportPoll.stop();
+	          } else {
+	            if (!silent) alert((data && data.error) ? data.error : 'Laporan belum tersedia.');
+	          }
+	        } catch (e) {
+	          if (!silent) alert('Gagal memuat laporan. Coba lagi.');
+	        } finally {
+	          if (btn) { btn.disabled = false; btn.textContent = original; }
+	        }
+	      }
+
+	      // Auto refresh report while pending (lightweight polling).
+	      (function() {
+	        const rid = {{ (report_id | default('')) | tojson | safe }};
+	        const pending = document.querySelector('.report-viewer [data-report-pending]');
+	        if (!rid || !pending) return;
+
+	        const poll = {
+	          tries: 0,
+	          maxTries: 60, // ~8 minutes at 8s interval
+	          timer: null,
+	          stop() {
+	            if (this.timer) clearTimeout(this.timer);
+	            this.timer = null;
+	          },
+	          tick() {
+	            this.tries += 1;
+	            refreshReport({ silent: true });
+	            if (this.tries >= this.maxTries) return;
+	            this.timer = setTimeout(() => this.tick(), 8000);
+	          }
+	        };
+	        window.__skdrReportPoll = poll;
+	        poll.timer = setTimeout(() => poll.tick(), 2500);
+	      })();
 
       // Print report from iframe
       function printReport() {

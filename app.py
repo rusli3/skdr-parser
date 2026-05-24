@@ -9,6 +9,8 @@ import requests
 from flask import Flask, render_template, request
 
 WEBHOOK_URL = os.getenv("SKDR_WEBHOOK_URL", "").strip()
+WEBHOOK_CONNECT_TIMEOUT = float(os.getenv("SKDR_WEBHOOK_CONNECT_TIMEOUT", "10"))
+WEBHOOK_READ_TIMEOUT = float(os.getenv("SKDR_WEBHOOK_READ_TIMEOUT", "600"))
 UPLOAD_DIR = Path("uploads")
 OUTPUT_DIR = Path("output")
 PROMPT_TEMPLATE_PATH = Path("prompt.md")
@@ -359,34 +361,53 @@ def build_payload(df: pd.DataFrame, rumah_sakit: str) -> dict:
     return payload
 
 
-def save_and_send_json(df: pd.DataFrame, rumah_sakit: str) -> tuple[dict, str]:
+def _payload_json_path(report_id: str) -> Path:
+    return OUTPUT_DIR / f"hasil_skdr_{report_id}.json"
+
+
+def _report_html_path(report_id: str) -> Path:
+    return OUTPUT_DIR / f"report_{report_id}.html"
+
+
+def call_webhook(payload: dict) -> tuple[str, bool, str]:
+    """
+    Returns: (html_report, ok, error_msg)
+    """
+    if not WEBHOOK_URL:
+        return "", False, "Webhook belum dikonfigurasi (SKDR_WEBHOOK_URL kosong)."
+    try:
+        response = requests.post(
+            WEBHOOK_URL,
+            json=payload,
+            timeout=(WEBHOOK_CONNECT_TIMEOUT, WEBHOOK_READ_TIMEOUT),
+        )
+        response.raise_for_status()
+        result = response.json()
+        html_report = result.get("html", "")
+        if not html_report:
+            return "", False, "Webhook merespons tetapi tidak mengembalikan field 'html'."
+        return html_report, True, ""
+    except Exception as e:
+        return "", False, f"Gagal memproses laporan dari webhook: {e}"
+
+
+def save_and_send_json(df: pd.DataFrame, rumah_sakit: str) -> tuple[str, dict, str, bool, str]:
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    json_path = OUTPUT_DIR / f"hasil_skdr_{ts}.json"
+    report_id = ts
+    json_path = _payload_json_path(report_id)
 
     payload = build_payload(df, rumah_sakit)
     with json_path.open("w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
 
-    # If no webhook is configured, keep the app usable (charts + preview still work).
-    if not WEBHOOK_URL:
-        return payload, ""
-
-    response = requests.post(
-        WEBHOOK_URL,
-        json=payload,
-        timeout=180,
-    )
-    response.raise_for_status()
-
-    # Parse HTML report from webhook JSON response
-    html_report = ""
-    try:
-        result = response.json()
-        html_report = result.get("html", "")
-    except (ValueError, KeyError):
-        pass
-
-    return payload, html_report
+    html_report, ok, err = call_webhook(payload)
+    if ok:
+        try:
+            _report_html_path(report_id).write_text(html_report, encoding="utf-8")
+        except Exception:
+            # Don't fail the request if persisting HTML fails.
+            pass
+    return report_id, payload, html_report, ok, err
 
 
 @app.route("/", methods=["GET", "POST"])
@@ -420,7 +441,7 @@ def index():
         validate_file_semantics(saved_files)
 
         df = process_files(saved_files)
-        payload, html_report = save_and_send_json(df, rumah_sakit)
+        report_id, payload, html_report, webhook_ok, webhook_error = save_and_send_json(df, rumah_sakit)
         trends = extract_trends(saved_files["total_kasus"])
 
         return render_template(
@@ -434,11 +455,36 @@ def index():
             payload=payload,
             system_prompt=load_system_prompt(),
             html_report=html_report,
+            webhook_ok=webhook_ok,
+            webhook_error=webhook_error,
+            report_id=report_id,
         )
     except Exception as e:
         # Sanitize: strip URLs from error messages to avoid exposing webhook endpoints
         error_msg = re.sub(r'https?://\S+', '[URL disembunyikan]', str(e))
         return render_template("index.html", error=error_msg, rumah_sakit=request.form.get("rumah_sakit", ""))
+
+
+@app.get("/report/<report_id>")
+def get_report(report_id: str):
+    # Serve cached HTML if we have it.
+    html_path = _report_html_path(report_id)
+    if html_path.exists():
+        return {"ok": True, "html": html_path.read_text(encoding="utf-8")}
+
+    payload_path = _payload_json_path(report_id)
+    if not payload_path.exists():
+        return {"ok": False, "error": "Payload tidak ditemukan untuk report_id ini."}, 404
+
+    payload = json.loads(payload_path.read_text(encoding="utf-8"))
+    html_report, ok, err = call_webhook(payload)
+    if ok:
+        try:
+            html_path.write_text(html_report, encoding="utf-8")
+        except Exception:
+            pass
+        return {"ok": True, "html": html_report}
+    return {"ok": False, "error": err}, 502
 
 
 if __name__ == "__main__":
