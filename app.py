@@ -121,6 +121,49 @@ def detect_metric_type(file_path: Path) -> str:
     return "unknown"
 
 
+def extract_location(file_path: Path) -> str:
+    try:
+        text = file_path.read_text(encoding="utf-8", errors="ignore")
+        match = re.search(r"Total Jumlah (?:Kasus|Kematian)\s+di\s+(.*?)(?:<br|\n|Pada Minggu)", text, re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+    except Exception:
+        pass
+    
+    try:
+        raw = pd.read_excel(file_path, header=None)
+        for r in range(min(20, len(raw))):
+            row_text = " ".join(raw.fillna("").astype(str).iloc[r].tolist())
+            match = re.search(r"Total Jumlah (?:Kasus|Kematian)\s+di\s+(.*?)(?:Pada Minggu|$)", row_text, re.IGNORECASE)
+            if match:
+                return match.group(1).strip()
+    except Exception:
+        pass
+        
+    return ""
+
+
+def validate_location_consistency(file_map: dict[str, Path]) -> None:
+    locations = {}
+    for field, path in file_map.items():
+        loc = extract_location(path)
+        if loc:
+            locations[field] = loc
+            
+    if not locations:
+        return
+        
+    base_loc = locations.get("total_kasus") or list(locations.values())[0]
+    for field, loc in locations.items():
+        if loc != base_loc:
+            raise ValueError(
+                f"Validasi gagal: Lokasi fasyankes tidak cocok! "
+                f"File total_kasus tercatat untuk '{base_loc}', "
+                f"sedangkan file {field} tercatat untuk '{loc}'. "
+                "Pastikan semua file di-download dengan filter fasilitas yang sama persis."
+            )
+
+
 def validate_file_semantics(file_map: dict[str, Path]) -> None:
     for field_name, expected in FILE_FIELDS.items():
         actual = detect_metric_type(file_map[field_name])
@@ -307,6 +350,8 @@ def extract_trends(file_path: Path) -> dict:
 
 
 def process_files(file_map: dict[str, Path]) -> pd.DataFrame:
+    validate_location_consistency(file_map)
+    
     cleaned = [
         clean_and_pick_total(file_map[field_name], field_name)
         for field_name in FILE_FIELDS
