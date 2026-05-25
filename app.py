@@ -41,6 +41,15 @@ def load_system_prompt() -> str:
 
 
 def extract_week_info(file_path: Path) -> tuple[int, int, int]:
+    text = file_path.read_text(encoding="utf-8", errors="ignore")
+    range_match = re.search(r"Minggu\s+(\d+)\s*-\s*Minggu\s+(\d+)", text, re.IGNORECASE)
+    subheader_weeks = [int(w) for w in re.findall(r"M-(\d+)", text, re.IGNORECASE)]
+    year_match = re.search(r"\b(20\d{2})\b", text)
+
+    if range_match and subheader_weeks and year_match:
+        _, end_week = range_match.groups()
+        return int(year_match.group(1)), int(end_week), max(subheader_weeks)
+
     raw = pd.read_excel(file_path, header=None)
     minggu_text = " ".join(raw.fillna("").astype(str).iloc[10].tolist())
     subheader_text = " ".join(raw.fillna("").astype(str).iloc[12].tolist())
@@ -93,13 +102,22 @@ def validate_week_consistency(file_map: dict[str, Path]) -> None:
 
 
 def detect_metric_type(file_path: Path) -> str:
-    raw = pd.read_excel(file_path, header=None)
-    # Baris ini biasanya berisi "Total Jumlah Kasus ..." atau "Total Jumlah Kematian ..."
-    descriptor = " ".join(raw.fillna("").astype(str).iloc[9].tolist()).lower()
-    if "kematian" in descriptor:
+    text = file_path.read_text(encoding="utf-8", errors="ignore").lower()
+    if "total jumlah kematian" in text:
         return "kematian"
-    if "kasus" in descriptor:
+    if "total jumlah kasus" in text:
         return "kasus"
+
+    try:
+        raw = pd.read_excel(file_path, header=None)
+        # Baris ini biasanya berisi "Total Jumlah Kasus ..." atau "Total Jumlah Kematian ..."
+        descriptor = " ".join(raw.fillna("").astype(str).iloc[9].tolist()).lower()
+        if "kematian" in descriptor:
+            return "kematian"
+        if "kasus" in descriptor:
+            return "kasus"
+    except Exception:
+        pass
     return "unknown"
 
 
@@ -113,7 +131,15 @@ def validate_file_semantics(file_map: dict[str, Path]) -> None:
 
 
 def clean_and_pick_total(file_path: Path, value_column: str) -> pd.DataFrame:
-    df = pd.read_excel(file_path, header=11)
+    try:
+        df = pd.read_excel(file_path, header=11)
+        if "Penyakit" not in df.columns and "Puskesmas" not in df.columns:
+            raise ValueError("Invalid columns in Excel mode")
+    except Exception:
+        dfs = pd.read_html(file_path)
+        df = dfs[-1]
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = [col[-1] for col in df.columns]
 
     if "Puskesmas" in df.columns:
         df = df.rename(columns={"Puskesmas": "Penyakit"})
@@ -128,6 +154,7 @@ def clean_and_pick_total(file_path: Path, value_column: str) -> pd.DataFrame:
         (df["Penyakit"] != "")
         & (df["Penyakit"].str.lower() != "nan")
         & (~df["Penyakit"].str.contains("total", case=False, na=False))
+        & (~df["Penyakit"].str.startswith("*", na=False))
     ].copy()
 
     df["Total"] = pd.to_numeric(df["Total"], errors="coerce").fillna(0).astype(int)
@@ -136,18 +163,26 @@ def clean_and_pick_total(file_path: Path, value_column: str) -> pd.DataFrame:
 
 
 def get_minggu_epidemiologi(file_path: Path) -> str:
-    raw = pd.read_excel(file_path, header=None)
-    minggu_text = " ".join(raw.fillna("").astype(str).iloc[10].tolist())
-    tahun_text = " ".join(raw.fillna("").astype(str).iloc[11].tolist())
+    text = file_path.read_text(encoding="utf-8", errors="ignore")
+    week_match = re.search(r"Minggu\s+(\d+)\s*-\s*Minggu\s+(\d+)", text, re.IGNORECASE)
+    year_match = re.search(r"\b(20\d{2})\b", text)
+    if week_match and year_match:
+        _, end_week = week_match.groups()
+        return f"{year_match.group(1)}-ME{int(end_week)}"
 
-    week_match = re.search(r"Minggu\s+(\d+)\s*-\s*Minggu\s+(\d+)", minggu_text, re.IGNORECASE)
-    year_match = re.search(r"\b(20\d{2})\b", tahun_text)
-    if not week_match or not year_match:
-        return "unknown-ME00"
+    try:
+        raw = pd.read_excel(file_path, header=None)
+        minggu_text = " ".join(raw.fillna("").astype(str).iloc[10].tolist())
+        tahun_text = " ".join(raw.fillna("").astype(str).iloc[11].tolist())
 
-    _, end_week = week_match.groups()
-    year = year_match.group(1)
-    return f"{year}-ME{int(end_week)}"
+        week_match = re.search(r"Minggu\s+(\d+)\s*-\s*Minggu\s+(\d+)", minggu_text, re.IGNORECASE)
+        year_match = re.search(r"\b(20\d{2})\b", tahun_text)
+        if week_match and year_match:
+            _, end_week = week_match.groups()
+            return f"{year_match.group(1)}-ME{int(end_week)}"
+    except Exception:
+        pass
+    return "unknown-ME00"
 
 
 def extract_trends(file_path: Path) -> dict:
@@ -155,6 +190,48 @@ def extract_trends(file_path: Path) -> dict:
     Ambil data trend (kolom M-1 ... M-terakhir) dari file total_kasus.
     Hasil: { "Nama Penyakit": { "M-1": 12, "M-2": 9, ... }, ... }
     """
+    is_html = False
+    try:
+        text = file_path.read_text(encoding="utf-8", errors="ignore")
+        if "<table" in text.lower():
+            is_html = True
+    except Exception:
+        pass
+
+    if is_html:
+        dfs = pd.read_html(file_path)
+        df = dfs[-1]
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = [c[-1] for c in df.columns]
+        
+        disease_col = None
+        for col in df.columns:
+            if isinstance(col, str) and ("penyakit" in col.lower() or col.lower() == "puskesmas"):
+                disease_col = col
+                break
+        if not disease_col:
+            disease_col = "Penyakit" if "Penyakit" in df.columns else "Puskesmas"
+        
+        week_cols = [c for c in df.columns if isinstance(c, str) and re.match(r"^M-\d+$", c.strip(), re.IGNORECASE)]
+        if not week_cols or disease_col not in df.columns:
+            return {}
+
+        trends = {}
+        for _, row in df.iterrows():
+            penyakit = str(row[disease_col]).strip()
+            if not penyakit or penyakit.lower() == "nan" or "total" in penyakit.lower() or penyakit.startswith("*"):
+                continue
+            penyakit = DISEASE_ALIASES.get(penyakit, penyakit)
+            
+            trend_data = {}
+            for m_col in week_cols:
+                try:
+                    trend_data[m_col] = int(float(row[m_col]))
+                except (ValueError, TypeError):
+                    trend_data[m_col] = 0
+            trends[penyakit] = trend_data
+        return trends
+
     df = pd.read_excel(file_path, header=None)
 
     # 1) Find the row that contains the most week labels like "M-1", "M-2", ...
