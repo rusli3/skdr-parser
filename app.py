@@ -13,7 +13,7 @@ WEBHOOK_CONNECT_TIMEOUT = float(os.getenv("SKDR_WEBHOOK_CONNECT_TIMEOUT", "10"))
 WEBHOOK_READ_TIMEOUT = float(os.getenv("SKDR_WEBHOOK_READ_TIMEOUT", "600"))
 UPLOAD_DIR = Path("uploads")
 OUTPUT_DIR = Path("output")
-PROMPT_TEMPLATE_PATH = Path("prompt.md")
+SYSTEM_PROMPT_PATH = Path("system_prompt.md")
 
 app = Flask(__name__)
 UPLOAD_DIR.mkdir(exist_ok=True)
@@ -34,18 +34,8 @@ DISEASE_ALIASES = {
 }
 
 def load_system_prompt() -> str:
-    """
-    Load the static system prompt template from prompt.md.
-    prompt.md is expected to be a JSON array with at least one object containing "system_prompt".
-    """
-    try:
-        raw = PROMPT_TEMPLATE_PATH.read_text(encoding="utf-8")
-        arr = json.loads(raw)
-        if isinstance(arr, list) and arr and isinstance(arr[0], dict):
-            sp = arr[0].get("system_prompt", "")
-            return sp if isinstance(sp, str) else ""
-    except Exception:
-        pass
+    if SYSTEM_PROMPT_PATH.exists():
+        return SYSTEM_PROMPT_PATH.read_text(encoding="utf-8")
     return ""
 
 
@@ -290,7 +280,7 @@ def build_payload(df: pd.DataFrame, rumah_sakit: str) -> dict:
     )
     work_df["cfr_valid"] = work_df["total_kasus"] >= 10
     work_df["ranking_kasus"] = (
-        work_df["total_kasus"].rank(method="min", ascending=False).astype(int)
+        work_df["total_kasus"].rank(method="first", ascending=False).astype(int)
     )
     death_rank = work_df["total_kematian"].where(work_df["total_kematian"] > 0)
     work_df["ranking_kematian"] = death_rank.rank(method="dense", ascending=False)
@@ -308,8 +298,8 @@ def build_payload(df: pd.DataFrame, rumah_sakit: str) -> dict:
     # CFR tertinggi hanya dihitung untuk penyakit dengan minimal 10 kasus
     cfr_df = work_df[work_df["total_kasus"] >= 10].copy()
     if not cfr_df.empty:
-        cfr_df["cfr"] = cfr_df["total_kematian"] / cfr_df["total_kasus"]
-        cfr_row = cfr_df.loc[cfr_df["cfr"].idxmax()]
+        cfr_df["cfr_unrounded"] = cfr_df["total_kematian"] / cfr_df["total_kasus"]
+        cfr_row = cfr_df.loc[cfr_df["cfr_unrounded"].idxmax()]
         cfr_name = cfr_row["penyakit"]
     else:
         cfr_name = "-"
@@ -391,7 +381,7 @@ def call_webhook(payload: dict) -> tuple[str, bool, str]:
         return "", False, f"Gagal memproses laporan dari webhook: {e}"
 
 
-def save_and_send_json(df: pd.DataFrame, rumah_sakit: str) -> tuple[str, dict, str, bool, str]:
+def save_payload(df: pd.DataFrame, rumah_sakit: str) -> tuple[str, dict]:
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     report_id = ts
     json_path = _payload_json_path(report_id)
@@ -400,20 +390,28 @@ def save_and_send_json(df: pd.DataFrame, rumah_sakit: str) -> tuple[str, dict, s
     with json_path.open("w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, indent=2)
 
+    return report_id, payload
+
+
+def generate_report(report_id: str) -> tuple[str, bool, str]:
+    payload_path = _payload_json_path(report_id)
+    if not payload_path.exists():
+        return "", False, "Payload tidak ditemukan untuk report_id ini."
+
+    payload = json.loads(payload_path.read_text(encoding="utf-8"))
     html_report, ok, err = call_webhook(payload)
     if ok:
         try:
             _report_html_path(report_id).write_text(html_report, encoding="utf-8")
         except Exception:
-            # Don't fail the request if persisting HTML fails.
             pass
-    return report_id, payload, html_report, ok, err
+        return html_report, True, ""
+    return "", False, err
 
 
 @app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "GET":
-        # Provide defaults so the template JS (Copy Prompt) never sees undefined.
         return render_template("index.html", payload={}, system_prompt=load_system_prompt())
 
     try:
@@ -441,7 +439,7 @@ def index():
         validate_file_semantics(saved_files)
 
         df = process_files(saved_files)
-        report_id, payload, html_report, webhook_ok, webhook_error = save_and_send_json(df, rumah_sakit)
+        report_id, payload = save_payload(df, rumah_sakit)
         trends = extract_trends(saved_files["total_kasus"])
 
         return render_template(
@@ -454,20 +452,26 @@ def index():
             trends=trends,
             payload=payload,
             system_prompt=load_system_prompt(),
-            html_report=html_report,
-            webhook_ok=webhook_ok,
-            webhook_error=webhook_error,
+            html_report=None,
+            webhook_ok=False,
+            webhook_error="",
             report_id=report_id,
         )
     except Exception as e:
-        # Sanitize: strip URLs from error messages to avoid exposing webhook endpoints
         error_msg = re.sub(r'https?://\S+', '[URL disembunyikan]', str(e))
         return render_template("index.html", error=error_msg, rumah_sakit=request.form.get("rumah_sakit", ""))
 
 
 @app.get("/report/<report_id>")
 def get_report(report_id: str):
-    # Serve cached HTML if we have it.
+    html_path = _report_html_path(report_id)
+    if html_path.exists():
+        return {"ok": True, "html": html_path.read_text(encoding="utf-8")}
+    return {"ok": False, "error": "Laporan belum dibuat. Klik tombol 'Buat Laporan'."}, 404
+
+
+@app.post("/generate/<report_id>")
+def generate_report_route(report_id: str):
     html_path = _report_html_path(report_id)
     if html_path.exists():
         return {"ok": True, "html": html_path.read_text(encoding="utf-8")}
@@ -476,13 +480,8 @@ def get_report(report_id: str):
     if not payload_path.exists():
         return {"ok": False, "error": "Payload tidak ditemukan untuk report_id ini."}, 404
 
-    payload = json.loads(payload_path.read_text(encoding="utf-8"))
-    html_report, ok, err = call_webhook(payload)
+    html_report, ok, err = generate_report(report_id)
     if ok:
-        try:
-            html_path.write_text(html_report, encoding="utf-8")
-        except Exception:
-            pass
         return {"ok": True, "html": html_report}
     return {"ok": False, "error": err}, 502
 
